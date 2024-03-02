@@ -68,5 +68,5 @@ class RenderResult:
         ]
 
     def by_id(self, goal_id: GoalId) -> RenderRow:
-        assert goal_id in self.index
+        assert goal_id in self.index, f"Goal id {goal_id} is unknown"
         return self.rows[self.index[goal_id]]
