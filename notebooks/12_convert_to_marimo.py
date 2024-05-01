@@ -77,13 +77,13 @@ def __(Dict, RenderResult, plt, randint):
         tops = [row.goal_id for row in rr.rows if row.is_switchable]
         plt.plot([xpos[t] for t in tops], [ypos[t] for t in tops], 'bo')
         plt.draw()
+        return plt.gca()
     return draw,
 
 
 @app.cell
-def __(draw, plt, rr0):
+def __(draw, rr0):
     draw(rr0)
-    plt.gca()
     return
 
 
@@ -99,27 +99,9 @@ def __(mo):
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        r"""
-        ## Before cleanup
-        """
-    )
-    return
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        r"""
-        Some common code, used in both implementations.
-        """
-    )
-    return
-
-
-@app.cell
 def __(RenderResult, dataclass):
+    """Some common code, used in both implementations."""
+
     @dataclass
     class RenderStep:
         rr: RenderResult
@@ -164,64 +146,6 @@ def __():
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        r"""
-        A previous version of `tube` function.
-        """
-    )
-    return
-
-
-@app.cell
-def __(Dict, List, RenderResult, RenderStep, Set, WIDTH, add_if_not):
-    def tube0(step: RenderStep):
-        children_of_new_layer: Set[int] = set()
-        new_layer: List[int] = []
-        already_added: Set[int] = set(g for l in step.layers for g in l)
-        for goal_id in step.roots:
-            if len(new_layer) >= WIDTH:
-                break
-            if (goal_id not in children_of_new_layer) and \
-                (all(g in already_added for g in step.previous[goal_id])):
-                new_layer.append(goal_id)
-                children_of_new_layer.update(e[0] for e in step.rr.by_id(goal_id).edges)
-        new_roots: List[int] = step.roots[len(new_layer):] + \
-                                [e[0] for gid in new_layer for e in step.rr.by_id(gid).edges]
-        new_opts: Dict[int, Dict] = {
-            goal_id: add_if_not(opts, {
-                "row": len(step.layers) if goal_id in new_layer else None,
-                "col": new_layer.index(goal_id) if goal_id in new_layer else None
-            })
-            for goal_id, opts in step.rr.node_opts.items()
-        }
-        new_layers = step.layers + [new_layer]
-        already_added.update(set(g for l in new_layers for g in l))
-        filtered_roots: List[int] = []
-        for g in new_roots:
-            if g not in already_added:
-                filtered_roots.append(g)
-                already_added.add(g)
-
-        return RenderStep(
-                RenderResult(step.rr.rows, node_opts=new_opts, select=step.rr.select, roots=step.rr.roots),
-                filtered_roots,
-                new_layers,
-                step.previous)
-    return tube0,
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        r"""
-        Run full render loop with an old function.
-        """
-    )
-    return
-
-
-@app.cell
 def __(Callable, RenderResult, RenderStep, find_previous):
     def build_with(rr: RenderResult, fn: Callable[[RenderStep], RenderStep]) -> RenderStep:
         step = RenderStep(rr, list(rr.roots), [], find_previous(rr))
@@ -232,23 +156,10 @@ def __(Callable, RenderResult, RenderStep, find_previous):
 
 
 @app.cell
-def __(build_with, pp, rr0, tube0):
-    r0 = build_with(rr0, tube0)
-    pp(r0)
-    return r0,
-
-
-@app.cell
-def __(draw, r0):
-    draw(r0.rr)
-    return
-
-
-@app.cell
 def __(mo):
     mo.md(
         r"""
-        ## After cleanup
+        ## Layering nodes
         """
     )
     return
@@ -256,11 +167,7 @@ def __(mo):
 
 @app.cell
 def __(mo):
-    mo.md(
-        r"""
-        So, let's simply remove `children_of_new_layers` variable and everything that's related to it.
-        """
-    )
+    mo.md("We use some algorithm.")
     return
 
 
@@ -300,6 +207,12 @@ def __(Dict, List, RenderResult, RenderStep, Set, WIDTH, add_if_not):
 
 
 @app.cell
+def __(mo):
+    mo.md("Rendering results:")
+    return
+
+
+@app.cell
 def __(build_with, pp, rr0, tube):
     r1 = build_with(rr0, tube)
     pp(r1)
@@ -307,18 +220,8 @@ def __(build_with, pp, rr0, tube):
 
 
 @app.cell
-def __(r0, r1):
-    r0 == r1
-    return
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        r"""
-        Two results are really identical, that's good.
-        """
-    )
+def __(draw, r1):
+    draw(r1.rr)
     return
 
 
@@ -336,15 +239,17 @@ def __(mo):
 def __(mo):
     mo.md(
         r"""
-        What else could we improve? I have a hypothesis that we could use a kind of "virtual layers" when placing nodes. Instead of tracking and updating "previous" nodes, we could calculate "minimal virtual layer" for each of the node. Upon creating a `new_roots` variable, we sort ids by their virtual layers. When creating a `new_layer`, we take no more than `WIDTH` goals with the same virtual layer value. No need to track parents anymore.
+        This part does not introduce new steps to algorithm. Instead, it changes the format of notebook used. We expect to gain new _interactivity_ features from this approach. Therefore, some new steps in this direction should be done next.
 
-        Having this idea in mind, and considering "backlog" from the previous part, we have the following items now:
-
-        1. Try **virtual layers** instead of tracking "previous nodes".
-        2. **Performance**. There's still a room for improvement. It's not cool to have things like `new_opts = {... for goal_id, opts in step.rr.node_opts.items()`. We visit literally all nodes in `rr` while update only some of them. This place (and, probably, several others) should be reviewed and rewritten.
+        1. Try **interactivity** features. It may include, probably, something from the following list:
+            1. Extract some algorithm variables into playbook level. The most obvious one is tree `WIDTH` (currently fixed as {WIDTH). Probably, we could extract more variables.
+            2. Use **feature flags** to switch between new and old logic. These flags could be moved up to UI level, and we would be able to switch them on and off.
+            3. Exploit [code editor](https://docs.marimo.io/api/inputs/code_editor.html) functionality to keep a current state of the rendering function. We would be able to edit and execute it instantly, right?
+            4. Probably, more.
+        2. **Fake goals**. In order to draw edges properly, we need to add "fake goals" (intersection points between edge and current layer). Current version of algorithm knows nothing about it.
         3. **Multiple roots**. We need to re-check algorithm for graph containing multiple root nodes. We could have either several not-connected sub-graphs (a result of filtering, for example), or sub-graphs that have some intermediate connections between them. Probably, an energy-based logic would be more useful here. Nevertheless, we _may have_ to modify an existing `energy` function in a way that only the shortest edge is considered.
-        4. **Fake goals**. In order to draw edges properly, we need to add "fake goals" (intersection points between edge and current layer). Current version of algorithm knows nothing about it.
-        5. **Horizontal adjustment tweaking**. It also _seems_ that the new generated graph could be additionally improved by horizontal adjustments. Is it true?
+        4. **Horizontal adjustment tweaking**. It also _seems_ that the new generated graph could be additionally improved by horizontal adjustments. Is it true?
+        5. **Performance**. There's still a room for improvement. It's not cool to have things like `new_opts = {... for goal_id, opts in step.rr.node_opts.items()`. We visit literally all nodes in `rr` while update only some of them. This place (and, probably, several others) should be reviewed and rewritten.
         """
     )
     return
