@@ -124,6 +124,28 @@ def __(RenderResult, dataclass):
 
 
 @app.cell
+def __(mo):
+    mo.md(
+        r"""
+        ## Layering nodes
+        """
+    )
+    return
+
+
+@app.cell
+def __(mo):
+    render_width = mo.ui.number(start=1, stop=20, value=5, label="Render width")
+    return render_width,
+
+
+@app.cell
+def __(mo, render_width):
+    mo.hstack([render_width])
+    return
+
+
+@app.cell
 def __(RenderResult):
     def find_previous(rr: RenderResult) -> dict[int, list[int]]:
         result: dict[int, list[int]] = {g: [] for g in rr.roots}
@@ -139,45 +161,28 @@ def __(RenderResult):
 
 
 @app.cell
-def __():
-    # Rendering defaults
-    WIDTH = 5
-    return WIDTH,
-
-
-@app.cell
 def __(Callable, RenderResult, RenderStep, find_previous):
-    def build_with(rr: RenderResult, fn: Callable[[RenderStep], RenderStep]) -> RenderStep:
+    def build_with(rr: RenderResult, fn: Callable[[RenderStep], RenderStep], width) -> RenderStep:
         step = RenderStep(rr, list(rr.roots), [], find_previous(rr))
         while step.roots:
-            step = fn(step)
+            step = fn(step, width)
         return step
     return build_with,
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        r"""
-        ## Layering nodes
-        """
-    )
+def __(mo, render_width):
+    mo.md(f"We use a `tube` algorithm to render graph with a maximum width of {render_width.value}.")
     return
 
 
 @app.cell
-def __(mo):
-    mo.md("We use some algorithm.")
-    return
-
-
-@app.cell
-def __(Dict, List, RenderResult, RenderStep, Set, WIDTH, add_if_not):
-    def tube(step: RenderStep):
+def __(Dict, List, RenderResult, RenderStep, Set, add_if_not):
+    def tube(step: RenderStep, width):
         new_layer: List[int] = []
         already_added: Set[int] = set(g for l in step.layers for g in l)
         for goal_id in step.roots:
-            if len(new_layer) >= WIDTH:
+            if len(new_layer) >= width:
                 break
             if (all(g in already_added for g in step.previous[goal_id])):
                 new_layer.append(goal_id)
@@ -207,22 +212,10 @@ def __(Dict, List, RenderResult, RenderStep, Set, WIDTH, add_if_not):
 
 
 @app.cell
-def __(mo):
-    mo.md("Rendering results:")
-    return
-
-
-@app.cell
-def __(build_with, pp, rr0, tube):
-    r1 = build_with(rr0, tube)
-    pp(r1)
-    return r1,
-
-
-@app.cell
-def __(draw, r1):
+def __(build_with, draw, render_width, rr0, tube):
+    r1 = build_with(rr0, tube, render_width.value)
     draw(r1.rr)
-    return
+    return r1,
 
 
 @app.cell
@@ -242,7 +235,7 @@ def __(mo):
         This part does not introduce new steps to algorithm. Instead, it changes the format of notebook used. We expect to gain new _interactivity_ features from this approach. Therefore, some new steps in this direction should be done next.
 
         1. Try **interactivity** features. It may include, probably, something from the following list:
-            1. Extract some algorithm variables into playbook level. The most obvious one is tree `WIDTH` (currently fixed as {WIDTH). Probably, we could extract more variables.
+            1. Extract more algorithm variables into playbook levelm in addition to `WIDTH`, if possible.
             2. Use **feature flags** to switch between new and old logic. These flags could be moved up to UI level, and we would be able to switch them on and off.
             3. Exploit [code editor](https://docs.marimo.io/api/inputs/code_editor.html) functionality to keep a current state of the rendering function. We would be able to edit and execute it instantly, right?
             4. Probably, more.
