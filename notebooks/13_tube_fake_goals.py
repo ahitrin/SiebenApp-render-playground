@@ -8,7 +8,7 @@ app = marimo.App()
 def __(mo):
     mo.md(
         r"""
-        # Part 12. Convert from `ipynb` to `marimo` notebook
+        # Part 13. Add fake goals to `tube` function
         """
     )
     return
@@ -18,7 +18,7 @@ def __(mo):
 def __(mo):
     mo.md(
         r"""
-        **Motivation**: I'm not satisfied with the current level of interactivity provided by Jupyter Notebooks, so I want to try a new approach. `marimo` notebook framework claims that it provides a higher level of interactivity. Let's try it!
+        **Goal**: re-implement "fake goals" feature from the original algorithm. There are two possible approaches: either add them in `tube` function, or place them at the end. I don't know yet which one is better. So, probably, I'll try both. 
         """
     )
     return
@@ -65,13 +65,13 @@ def __(Dict, RenderResult, plt, randint):
         for goal_id, attrs in rr.goals():
             row, col = attrs.get("row", None), attrs.get("col", None)
             xpos[goal_id] = col if col is not None else randint(0, 10)
-            ypos[goal_id] = row if row is not None else randint(min_row, 10) 
+            ypos[goal_id] = row if row is not None else randint(min_row, min_row + 10) 
         for row in rr.rows:
             row_id = row.goal_id
             for edge in row.edges:
                 e = edge[0]
-                if ypos[row_id] > ypos[e]:
-                    print(f"downgoing edge: {row_id}@{ypos[row_id]} -> {e}@{ypos[e]}")
+                #if ypos[row_id] > ypos[e]:
+                #    print(f"downgoing edge: {row_id}@{ypos[row_id]} -> {e}@{ypos[e]}")
                 plt.plot([xpos[row_id], xpos[e]], [ypos[row_id], ypos[e]], 'ro-')
             plt.text(xpos[row_id] + 0.1, ypos[row_id], row.name)
         tops = [row.goal_id for row in rr.rows if row.is_switchable]
@@ -83,7 +83,7 @@ def __(Dict, RenderResult, plt, randint):
 
 @app.cell
 def __(draw, rr0):
-    draw(rr0)
+    draw(rr0, min_row=20)
     return
 
 
@@ -100,7 +100,7 @@ def __(mo):
 
 @app.cell
 def __(RenderResult, dataclass):
-    """Some common code, used in both implementations."""
+    """Some common code."""
 
     @dataclass
     class RenderStep:
@@ -108,6 +108,7 @@ def __(RenderResult, dataclass):
         roots: list[int]
         layers: list[list[int]]
         previous: dict[int, list[int]]
+        passing_edges: set[int]
 
 
     def pp(step: RenderStep):
@@ -140,8 +141,20 @@ def __(mo):
 
 
 @app.cell
-def __(mo, render_width):
-    mo.hstack([render_width])
+def __(mo):
+    tube_steps = mo.ui.number(start=1, stop=100, value=1, label="Render steps")
+    return tube_steps,
+
+
+@app.cell
+def __(mo):
+    enable_insert_fake_goals = mo.ui.checkbox(label="Insert fake goals")
+    return enable_insert_fake_goals,
+
+
+@app.cell
+def __(enable_insert_fake_goals, mo, render_width, tube_steps):
+    mo.hstack([tube_steps, render_width, enable_insert_fake_goals])
     return
 
 
@@ -161,11 +174,13 @@ def __(RenderResult):
 
 
 @app.cell
-def __(Callable, RenderResult, RenderStep, find_previous):
+def __(Callable, RenderResult, RenderStep, find_previous, tube_steps):
     def build_with(rr: RenderResult, fn: Callable[[RenderStep], RenderStep], width) -> RenderStep:
-        step = RenderStep(rr, list(rr.roots), [], find_previous(rr))
-        while step.roots:
+        step = RenderStep(rr, list(rr.roots), [], find_previous(rr), set())
+        counter = 0
+        while step.roots and counter < tube_steps.value:
             step = fn(step, width)
+            counter += 1
         return step
     return build_with,
 
@@ -177,8 +192,17 @@ def __(mo, render_width):
 
 
 @app.cell
-def __(Dict, List, RenderResult, RenderStep, Set, add_if_not):
+def __(
+    Dict,
+    List,
+    RenderResult,
+    RenderStep,
+    Set,
+    add_if_not,
+    enable_insert_fake_goals,
+):
     def tube(step: RenderStep, width):
+        enable_fake = enable_insert_fake_goals.value
         new_layer: List[int] = []
         already_added: Set[int] = set(g for l in step.layers for g in l)
         for goal_id in step.roots:
@@ -198,6 +222,12 @@ def __(Dict, List, RenderResult, RenderStep, Set, add_if_not):
         new_layers = step.layers + [new_layer]
         already_added.update(set(g for l in new_layers for g in l))
         filtered_roots: List[int] = []
+        passing_edges = set()
+        if enable_fake:
+            passing_edges = step.passing_edges.difference(set(new_layer))
+            for g in new_layer:
+                for e in step.rr.by_id(g).edges:
+                    passing_edges.add(e[0])
         for g in new_roots:
             if g not in already_added:
                 filtered_roots.append(g)
@@ -207,7 +237,8 @@ def __(Dict, List, RenderResult, RenderStep, Set, add_if_not):
                 RenderResult(step.rr.rows, node_opts=new_opts, select=step.rr.select, roots=step.rr.roots),
                 filtered_roots,
                 new_layers,
-                step.previous)
+                step.previous,
+                passing_edges)
     return tube,
 
 
@@ -308,19 +339,35 @@ def __(RenderResult, adjust_horisontal, normalize_cols):
 def __(build_with, draw, render_width, rr0, tube):
     r1 = build_with(rr0, tube, render_width.value)
 
-    draw(r1.rr)
+    draw(r1.rr, 20)
     return r1,
 
 
 @app.cell
-def __(mo):
-    mo.md("After horizontal tweaking...")
+def __(mo, r1):
+    mo.ui.table([
+        {"Field": "roots", "Value": str(r1.roots)},
+        {"Field": "layers", "Value": str(r1.layers)},
+        {"Field": "passing_edges", "Value": str(r1.passing_edges)},
+    ], label="Render step")
     return
 
 
 @app.cell
-def __(draw, r1, tweak_horizontal):
-    draw(tweak_horizontal(r1.rr))
+def __(r1):
+    all_nodes_placed = all(o.get('row') is not None for o in r1.rr.node_opts.values())
+    return all_nodes_placed,
+
+
+@app.cell
+def __(all_nodes_placed, mo):
+    mo.md("After horizontal tweaking..." if all_nodes_placed else "No horizontal tweaking until all nodes are placed.")
+    return
+
+
+@app.cell
+def __(all_nodes_placed, draw, r1, tweak_horizontal):
+    draw(tweak_horizontal(r1.rr) if all_nodes_placed else r1.rr, 20)
     return
 
 
