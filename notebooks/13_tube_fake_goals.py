@@ -99,7 +99,7 @@ def __(mo):
 
 
 @app.cell
-def __(RenderResult, dataclass):
+def __(Any, RenderResult, dataclass):
     """Some common code."""
 
     @dataclass
@@ -108,7 +108,7 @@ def __(RenderResult, dataclass):
         roots: list[int]
         layers: list[list[int]]
         previous: dict[int, list[int]]
-        passing_edges: set[int]
+        raw: dict[str, Any]     # for untyped, debug info
 
 
     def pp(step: RenderStep):
@@ -176,7 +176,7 @@ def __(RenderResult):
 @app.cell
 def __(Callable, RenderResult, RenderStep, find_previous, tube_steps):
     def build_with(rr: RenderResult, fn: Callable[[RenderStep], RenderStep], width) -> RenderStep:
-        step = RenderStep(rr, list(rr.roots), [], find_previous(rr), set())
+        step = RenderStep(rr, list(rr.roots), [], find_previous(rr), {})
         counter = 0
         while step.roots and counter < tube_steps.value:
             step = fn(step, width)
@@ -193,9 +193,11 @@ def __(mo, render_width):
 
 @app.cell
 def __(
+    Any,
     Dict,
     List,
     RenderResult,
+    RenderRow,
     RenderStep,
     Set,
     add_if_not,
@@ -203,8 +205,10 @@ def __(
 ):
     def tube(step: RenderStep, width):
         enable_fake = enable_insert_fake_goals.value
+        raw: dict[str, Any] = {}
         new_layer: List[int] = []
         already_added: Set[int] = set(g for l in step.layers for g in l)
+
         for goal_id in step.roots:
             if len(new_layer) >= width:
                 break
@@ -212,6 +216,27 @@ def __(
                 new_layer.append(goal_id)
         new_roots: List[int] = step.roots[len(new_layer):] + \
                                 [e[0] for gid in new_layer for e in step.rr.by_id(gid).edges]
+        
+        new_rows = step.rr.rows
+        if enable_fake:
+            passing_edges = step.raw.get("passing_edges", set())
+            fakes = passing_edges.difference(set(new_layer))
+            for e in fakes:
+                # Create a new fake goal for every passing edge
+                fake_row_id = len(new_rows)
+                fake_row = RenderRow(
+                    fake_row_id,
+                    fake_row_id,
+                    f"fake {e}@{len(step.layers) + 1}",
+                    False,
+                    False,
+                    [],
+                    {}
+                )
+            raw["passing_edges"] = fakes.union(set(e[0] for g in new_layer for e in step.rr.by_id(g).edges))
+            raw["fakes"] = fakes
+            raw["fake_for"] = set(g for f in fakes for g in step.previous[f] if g in already_added)
+
         new_opts: Dict[int, Dict] = {
             goal_id: add_if_not(opts, {
                 "row": len(step.layers) if goal_id in new_layer else None,
@@ -222,23 +247,17 @@ def __(
         new_layers = step.layers + [new_layer]
         already_added.update(set(g for l in new_layers for g in l))
         filtered_roots: List[int] = []
-        passing_edges = set()
-        if enable_fake:
-            passing_edges = step.passing_edges.difference(set(new_layer))
-            for g in new_layer:
-                for e in step.rr.by_id(g).edges:
-                    passing_edges.add(e[0])
         for g in new_roots:
             if g not in already_added:
                 filtered_roots.append(g)
                 already_added.add(g)
 
         return RenderStep(
-                RenderResult(step.rr.rows, node_opts=new_opts, select=step.rr.select, roots=step.rr.roots),
+                RenderResult(new_rows, node_opts=new_opts, select=step.rr.select, roots=step.rr.roots),
                 filtered_roots,
                 new_layers,
                 step.previous,
-                passing_edges)
+                raw)
     return tube,
 
 
@@ -345,12 +364,15 @@ def __(build_with, draw, render_width, rr0, tube):
 
 @app.cell
 def __(mo, r1):
-    mo.ui.table([
+    debug_info = [
         {"Field": "roots", "Value": str(r1.roots)},
         {"Field": "layers", "Value": str(r1.layers)},
-        {"Field": "passing_edges", "Value": str(r1.passing_edges)},
-    ], label="Render step")
-    return
+        {"Field": "previous", "Value": str(r1.previous)},
+    ]
+    for k, v in r1.raw.items():
+        debug_info.append({"Field": k, "Value": str(v)})
+    mo.ui.table(debug_info, label="Last render step debug info")
+    return debug_info, k, v
 
 
 @app.cell
