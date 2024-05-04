@@ -212,6 +212,99 @@ def __(Dict, List, RenderResult, RenderStep, Set, add_if_not):
 
 
 @app.cell
+def __(Dict, RenderResult, Set, render_width):
+    def avg(vals):
+        return sum(vals) / len(vals)
+
+    def shift_neutral(ds):
+        return avg([d[1] for d in ds])
+
+    def calc_shift(rr: RenderResult, shift_fn):
+        connected: Dict[int, Set[int]] = {row.goal_id: set() for row in rr.rows}
+        for row in rr.rows:
+            for e in row.edges:
+                connected[e[0]].add(row.goal_id)
+                connected[row.goal_id].add(e[0])
+
+        result = {}
+        for row in rr.rows:
+            goal_id = row.goal_id
+            opts = rr.node_opts[goal_id]
+            row_, col_ = opts['row'], opts['col']
+            deltas = [
+                (rr.node_opts[c]['row'] - row_,
+                 rr.node_opts[c]['col'] - col_)
+                for c in connected[goal_id]
+            ]
+            result[goal_id] = shift_fn(deltas)
+        return result
+
+    def adjust_horisontal(rr: RenderResult, mult):
+        deltas = calc_shift(rr, shift_neutral)
+        new_opts = {
+            goal_id: opts | {"col": opts["col"] + (mult * deltas[goal_id])}
+            for goal_id, opts in rr.node_opts.items()
+        }
+        return RenderResult(
+            rr.rows,
+            node_opts=new_opts,
+            select=rr.select,
+            roots=rr.roots
+        )
+
+    def normalize_cols(rr: RenderResult) -> RenderResult:
+        order0 = {}
+        for goal_id, opts in rr.node_opts.items():
+            row, col = opts["row"], opts["col"]
+            if row not in order0:
+                order0[row] = []
+            order0[row].append((col, goal_id))
+        # print("order0: ", order0)
+        order1 = {}
+        for layer, tuples in order0.items():
+            non_empty = list(round(t[0]) for t in tuples)
+            need_drop = len(tuples) - len(set(non_empty))
+            empty = {x for x in range(render_width.value)}.difference(non_empty)
+            for i in range(need_drop):
+                empty.pop()
+            # print(f"{layer}: non-empty {non_empty}, empty {empty}, dropped {need_drop}")
+            order1[layer] = tuples + [(e, -10) for e in empty]
+        # print("order1: ", order1)
+        order2 = {k: sorted(v) for k, v in order1.items()}
+        # print("order2: ", order2)
+        indexed0 = {k: [t[1] for t in v] for k, v in order2.items()}
+        # print("indexed0: ", indexed0)
+        indexed1 = {}
+        for layer in indexed0.values():
+            for i, goal_id in enumerate(layer):
+                if goal_id > 0:
+                    indexed1[goal_id] = i
+        # print("indexed1: ", indexed1)
+        new_opts = {
+            goal_id: opts | {"col": indexed1[goal_id]}
+            for goal_id, opts in rr.node_opts.items()
+        }
+        # print(new_opts)
+        return RenderResult(
+            rr.rows,
+            node_opts=new_opts,
+            select=rr.select,
+            roots=rr.roots
+        )
+    return adjust_horisontal, avg, calc_shift, normalize_cols, shift_neutral
+
+
+@app.cell
+def __(RenderResult, adjust_horisontal, normalize_cols):
+    def tweak_horizontal(rr: RenderResult):
+        r1 = adjust_horisontal(rr, 1.0)
+        r2 = adjust_horisontal(r1, 0.5)
+        r3 = normalize_cols(r2)
+        return r3
+    return tweak_horizontal,
+
+
+@app.cell
 def __(build_with, draw, render_width, rr0, tube):
     r1 = build_with(rr0, tube, render_width.value)
     draw(r1.rr)
@@ -220,33 +313,14 @@ def __(build_with, draw, render_width, rr0, tube):
 
 @app.cell
 def __(mo):
-    mo.md("""In order to order nodes horizontally, we need to chose a proper level to start from. It doesn't seem reasonable to start from the topmost or from the bottommost level because they do often contain quite small amount of nodes, and their location could be modified easily.
-
-    Instead, we'll try to find _the most populated_ level of the graph, and align all other levels to it. We could choose the most populated level as a level that contains the highest amount of nodes and outgoing edges. To be honest, it would be good to count incoming edges too, but it's a bit more difficult, so we ignore it for now.""")
+    mo.md("After horizontal tweaking...")
     return
 
 
 @app.cell
-def __(mo, r1):
-    table_data: dict[int, dict[str, int]] = {}
-
-    for goal_id, attrs in r1.rr.goals():
-        level = attrs.get("row", None)
-        if level not in table_data:
-            table_data[level] = {"level": level, "nodes": 0, "edges": 0}
-        table_data[level]["nodes"] = table_data[level]["nodes"] + 1
-        table_data[level]["edges"] = table_data[level]["edges"] + len(r1.rr.by_id(goal_id).edges)
-
-    table_list = [table_data[k] for k in sorted(table_data.keys(), reverse=True)]
-    mo.ui.table(table_list, label="Level metrics", pagination=False)
-    return attrs, goal_id, level, table_data, table_list
-
-
-@app.cell
-def __(mo, table_list):
-    most_populated = sorted(table_list, key=lambda l: (l["nodes"], l["edges"]))[-1]["level"]
-    mo.md(f"In the table above, _the most populated level_ is {most_populated}")
-    return most_populated,
+def __(draw, r1, tweak_horizontal):
+    draw(tweak_horizontal(r1.rr))
+    return
 
 
 @app.cell
@@ -272,8 +346,7 @@ def __(mo):
             4. Probably, more.
         2. **Fake goals**. In order to draw edges properly, we need to add "fake goals" (intersection points between edge and current layer). Current version of algorithm knows nothing about it.
         3. **Multiple roots**. We need to re-check algorithm for graph containing multiple root nodes. We could have either several not-connected sub-graphs (a result of filtering, for example), or sub-graphs that have some intermediate connections between them. Probably, an energy-based logic would be more useful here. Nevertheless, we _may have_ to modify an existing `energy` function in a way that only the shortest edge is considered.
-        4. **Horizontal adjustment tweaking**. It also _seems_ that the new generated graph could be additionally improved by horizontal adjustments. Is it true?
-        5. **Performance**. There's still a room for improvement. It's not cool to have things like `new_opts = {... for goal_id, opts in step.rr.node_opts.items()`. We visit literally all nodes in `rr` while update only some of them. This place (and, probably, several others) should be reviewed and rewritten.
+        4. **Performance**. There's still a room for improvement. It's not cool to have things like `new_opts = {... for goal_id, opts in step.rr.node_opts.items()`. We visit literally all nodes in `rr` while update only some of them. This place (and, probably, several others) should be reviewed and rewritten.
         """
     )
     return
