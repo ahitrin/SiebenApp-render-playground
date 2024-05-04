@@ -220,6 +220,37 @@ def __(build_with, draw, render_width, rr0, tube):
 
 @app.cell
 def __(mo):
+    mo.md("""In order to order nodes horizontally, we need to chose a proper level to start from. It doesn't seem reasonable to start from the topmost or from the bottommost level because they do often contain quite small amount of nodes, and their location could be modified easily.
+
+    Instead, we'll try to find _the most populated_ level of the graph, and align all other levels to it. We could choose the most populated level as a level that contains the highest amount of nodes and outgoing edges. To be honest, it would be good to count incoming edges too, but it's a bit more difficult, so we ignore it for now.""")
+    return
+
+
+@app.cell
+def __(mo, r1):
+    table_data: dict[int, dict[str, int]] = {}
+
+    for goal_id, attrs in r1.rr.goals():
+        level = attrs.get("row", None)
+        if level not in table_data:
+            table_data[level] = {"level": level, "nodes": 0, "edges": 0}
+        table_data[level]["nodes"] = table_data[level]["nodes"] + 1
+        table_data[level]["edges"] = table_data[level]["edges"] + len(r1.rr.by_id(goal_id).edges)
+
+    table_list = [table_data[k] for k in sorted(table_data.keys(), reverse=True)]
+    mo.ui.table(table_list, label="Level metrics", pagination=False)
+    return attrs, goal_id, level, table_data, table_list
+
+
+@app.cell
+def __(mo, table_list):
+    most_populated = sorted(table_list, key=lambda l: (l["nodes"], l["edges"]))[-1]["level"]
+    mo.md(f"In the table above, _the most populated level_ is {most_populated}")
+    return most_populated,
+
+
+@app.cell
+def __(mo):
     mo.md(
         r"""
         ## Next steps
