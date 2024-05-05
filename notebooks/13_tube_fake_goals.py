@@ -32,9 +32,9 @@ def __(mo):
 
 @app.cell
 def __():
-    from siebenapp import RenderRow, RenderResult
+    from siebenapp import RenderRow, RenderResult, EdgeType
     from sieben_example1 import EXAMPLE as rr0
-    return RenderResult, RenderRow, rr0
+    return EdgeType, RenderResult, RenderRow, rr0
 
 
 @app.cell
@@ -195,6 +195,7 @@ def __(mo, render_width):
 def __(
     Any,
     Dict,
+    EdgeType,
     List,
     RenderResult,
     RenderRow,
@@ -212,37 +213,84 @@ def __(
         for goal_id in step.roots:
             if len(new_layer) >= width:
                 break
-            if (all(g in already_added for g in step.previous[goal_id])):
+            if all(g in already_added for g in step.previous[goal_id]):
                 new_layer.append(goal_id)
-        new_roots: List[int] = step.roots[len(new_layer):] + \
-                                [e[0] for gid in new_layer for e in step.rr.by_id(gid).edges]
-        
-        new_rows = step.rr.rows
+        new_roots: List[int] = step.roots[len(new_layer) :] + [
+            e[0] for gid in new_layer for e in step.rr.by_id(gid).edges
+        ]
+
+        new_rows = list(step.rr.rows)
+        new_previous = dict(step.previous)
+        new_opts: Dict[int, Dict] = dict(step.rr.node_opts)
         if enable_fake:
             passing_edges = step.raw.get("passing_edges", set())
             fakes = passing_edges.difference(set(new_layer))
-            for e in fakes:
-                # Create a new fake goal for every passing edge
-                fake_row_id = len(new_rows)
+            fake_edges = set(
+                (g, f)
+                for f in fakes
+                for g in step.previous[f]
+                if g in already_added
+            )
+            fake_for = set(e[0] for e in fake_edges)
+            add_rows = []
+            mod_rows = []
+            add_to_new_layer = []
+            for down_goal in fake_for:
+                # Create a new fake goal
+                original_idx = step.rr.index[down_goal]
+                original_row = step.rr.by_id(down_goal)
+                fake_row_id = len(new_rows) + 1
+                replace_edges = set(f for g, f in fake_edges if g == down_goal)
+                edge_type = max([EdgeType.BLOCKER] + [e[1] for e in original_row.edges if e in replace_edges])
+                new_edges = [e for e in original_row.edges if e[0] not in replace_edges]
+                new_edges.append((fake_row_id, edge_type))
+                clone_row = RenderRow(
+                    original_row.goal_id,
+                    original_row.raw_id,
+                    original_row.name,
+                    original_row.is_open,
+                    original_row.is_switchable,
+                    new_edges,
+                    original_row.attrs
+                )
                 fake_row = RenderRow(
                     fake_row_id,
                     fake_row_id,
-                    f"fake {e}@{len(step.layers) + 1}",
+                    f"fake {down_goal}@{len(step.layers) + 1}",
                     False,
                     False,
-                    [],
-                    {}
+                    [e for e in original_row.edges if e[0] in fakes],
+                    {},
                 )
-            raw["passing_edges"] = fakes.union(set(e[0] for g in new_layer for e in step.rr.by_id(g).edges))
+                new_rows.pop(original_idx)
+                new_rows.insert(original_idx, clone_row)
+                new_rows.append(fake_row)
+                add_to_new_layer.append(fake_row_id)
+                add_rows.append(fake_row)
+                mod_rows.append(clone_row)
+                new_previous[fake_row_id] = [down_goal]
+                new_opts[fake_row_id] = {}
+            raw["passing_edges"] = fakes.union(
+                set(e[0] for g in new_layer for e in step.rr.by_id(g).edges)
+            )
             raw["fakes"] = fakes
-            raw["fake_for"] = set(g for f in fakes for g in step.previous[f] if g in already_added)
+            raw["fake_edges"] = fake_edges
+            raw["fake_for"] = fake_for
+            raw["add_rows"] = add_rows
+            raw["mod_rows"] = mod_rows
+            new_layer.extend(add_to_new_layer)
 
-        new_opts: Dict[int, Dict] = {
-            goal_id: add_if_not(opts, {
-                "row": len(step.layers) if goal_id in new_layer else None,
-                "col": new_layer.index(goal_id) if goal_id in new_layer else None
-            })
-            for goal_id, opts in step.rr.node_opts.items()
+        new_opts = {
+            goal_id: add_if_not(
+                opts,
+                {
+                    "row": len(step.layers) if goal_id in new_layer else None,
+                    "col": (
+                        new_layer.index(goal_id) if goal_id in new_layer else None
+                    ),
+                },
+            )
+            for goal_id, opts in new_opts.items()
         }
         new_layers = step.layers + [new_layer]
         already_added.update(set(g for l in new_layers for g in l))
@@ -253,11 +301,17 @@ def __(
                 already_added.add(g)
 
         return RenderStep(
-                RenderResult(new_rows, node_opts=new_opts, select=step.rr.select, roots=step.rr.roots),
-                filtered_roots,
-                new_layers,
-                step.previous,
-                raw)
+            RenderResult(
+                new_rows,
+                node_opts=new_opts,
+                select=step.rr.select,
+                roots=step.rr.roots,
+            ),
+            filtered_roots,
+            new_layers,
+            new_previous,
+            raw,
+        )
     return tube,
 
 
@@ -355,11 +409,15 @@ def __(RenderResult, adjust_horisontal, normalize_cols):
 
 
 @app.cell
-def __(build_with, draw, render_width, rr0, tube):
+def __(build_with, render_width, rr0, tube):
     r1 = build_with(rr0, tube, render_width.value)
-
-    draw(r1.rr, 20)
     return r1,
+
+
+@app.cell
+def __(draw, r1):
+    draw(r1.rr, 20)
+    return
 
 
 @app.cell
