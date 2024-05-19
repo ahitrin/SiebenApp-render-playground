@@ -4,14 +4,16 @@ __generated_with = "0.4.7"
 app = marimo.App()
 
 
-@app.cell
-def __(mo):
-    mo.md(
-        r"""
+app._unparsable_cell(
+    r"""
+     mo.md(
+        r\"\"\"
         # Part 13. Add fake goals to `tube` function
-        """
+        \"\"\"
     )
-    return
+    """,
+    name="__"
+)
 
 
 @app.cell
@@ -148,13 +150,25 @@ def __(mo):
 
 @app.cell
 def __(mo):
-    enable_insert_fake_goals = mo.ui.checkbox(label="Insert fake goals")
+    enable_insert_fake_goals = mo.ui.checkbox(label="Insert fake goals during rendering")
     return enable_insert_fake_goals,
 
 
 @app.cell
-def __(enable_insert_fake_goals, mo, render_width, tube_steps):
-    mo.hstack([tube_steps, render_width, enable_insert_fake_goals])
+def __(mo):
+    enable_insert_fake_goals_after = mo.ui.checkbox(label="Insert fake goals after rendering")
+    return enable_insert_fake_goals_after,
+
+
+@app.cell
+def __(
+    enable_insert_fake_goals,
+    enable_insert_fake_goals_after,
+    mo,
+    render_width,
+    tube_steps,
+):
+    mo.hstack([tube_steps, render_width, enable_insert_fake_goals, enable_insert_fake_goals_after])
     return
 
 
