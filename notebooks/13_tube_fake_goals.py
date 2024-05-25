@@ -1,28 +1,22 @@
 import marimo
 
-__generated_with = "0.4.7"
+__generated_with = "0.6.6"
 app = marimo.App()
-
-
-app._unparsable_cell(
-    r"""
-     mo.md(
-        r\"\"\"
-        # Part 13. Add fake goals to `tube` function
-        \"\"\"
-    )
-    """,
-    name="__"
-)
 
 
 @app.cell
 def __(mo):
     mo.md(
         r"""
-        **Goal**: re-implement "fake goals" feature from the original algorithm. There are two possible approaches: either add them in `tube` function, or place them at the end. I don't know yet which one is better. So, probably, I'll try both. 
+        # Part 13. Add fake goals to `tube` function
         """
     )
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md(r"**Goal**: re-implement \"fake goals\" feature from the original algorithm. There are two possible approaches: either add them in `tube` function, or place them at the end. I don't know yet which one is better. So, probably, I'll try both.")
     return
 
 
@@ -91,12 +85,7 @@ def __(draw, rr0):
 
 @app.cell
 def __(mo):
-    mo.md(
-        r"""
-        A lot of downgoing edges, as expected. Nodes are placed at random, ignoring ordering.
-
-        """
-    )
+    mo.md(r"A lot of downgoing edges, as expected. Nodes are placed at random, ignoring ordering.")
     return
 
 
@@ -128,11 +117,7 @@ def __(Any, RenderResult, dataclass):
 
 @app.cell
 def __(mo):
-    mo.md(
-        r"""
-        ## Layering nodes
-        """
-    )
+    mo.md(r"## Layering nodes")
     return
 
 
@@ -454,8 +439,8 @@ def __(r1):
 
 
 @app.cell
-def __(all_nodes_placed, mo):
-    mo.md("After horizontal tweaking..." if all_nodes_placed else "No horizontal tweaking until all nodes are placed.")
+def __(mo):
+    mo.md("After horizontal tweaking...\" if all_nodes_placed else \"No horizontal tweaking until all nodes are placed.")
     return
 
 
@@ -467,11 +452,7 @@ def __(all_nodes_placed, draw, r1, tweak_horizontal):
 
 @app.cell
 def __(mo):
-    mo.md(
-        r"""
-        ## Next steps
-        """
-    )
+    mo.md(r"## Next steps")
     return
 
 
