@@ -6,11 +6,7 @@ app = marimo.App()
 
 @app.cell
 def __(mo):
-    mo.md(
-        r"""
-        # Part 13. Add fake goals to `tube` function
-        """
-    )
+    mo.md(r"# Part 13. Add fake goals to `tube` function")
     return
 
 
@@ -446,7 +442,33 @@ def __(mo):
 
 @app.cell
 def __(all_nodes_placed, draw, r1, tweak_horizontal):
-    draw(tweak_horizontal(r1.rr) if all_nodes_placed else r1.rr, 20)
+    rr2 = tweak_horizontal(r1.rr) if all_nodes_placed else r1.rr
+    draw(rr2, 20)
+    return rr2,
+
+
+@app.cell
+def __(mo):
+    mo.md("## Add fake goals")
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md("So, now we should get rid of edges that snap for more than 1 layer. We do it after horizontal adjustment in order to reduce amount of calculations. This feature is set under the \"_Insert fake goals after rendering_\" flag.")
+    return
+
+
+@app.cell
+def __(RenderResult):
+    def add_fake_goals(r: RenderResult) -> RenderResult:
+        return r
+    return add_fake_goals,
+
+
+@app.cell
+def __(add_fake_goals, draw, enable_insert_fake_goals_after, rr2):
+    draw(add_fake_goals(rr2) if enable_insert_fake_goals_after else rr2, 20)
     return
 
 
@@ -460,16 +482,8 @@ def __(mo):
 def __(mo):
     mo.md(
         r"""
-        This part does not introduce new steps to algorithm. Instead, it changes the format of notebook used. We expect to gain new _interactivity_ features from this approach. Therefore, some new steps in this direction should be done next.
-
-        1. Try **interactivity** features. It may include, probably, something from the following list:
-            1. Extract more algorithm variables into playbook levelm in addition to `WIDTH`, if possible.
-            2. Use **feature flags** to switch between new and old logic. These flags could be moved up to UI level, and we would be able to switch them on and off.
-            3. Exploit [code editor](https://docs.marimo.io/api/inputs/code_editor.html) functionality to keep a current state of the rendering function. We would be able to edit and execute it instantly, right?
-            4. Probably, more.
-        2. **Fake goals**. In order to draw edges properly, we need to add "fake goals" (intersection points between edge and current layer). Current version of algorithm knows nothing about it.
-        3. **Multiple roots**. We need to re-check algorithm for graph containing multiple root nodes. We could have either several not-connected sub-graphs (a result of filtering, for example), or sub-graphs that have some intermediate connections between them. Probably, an energy-based logic would be more useful here. Nevertheless, we _may have_ to modify an existing `energy` function in a way that only the shortest edge is considered.
-        4. **Performance**. There's still a room for improvement. It's not cool to have things like `new_opts = {... for goal_id, opts in step.rr.node_opts.items()`. We visit literally all nodes in `rr` while update only some of them. This place (and, probably, several others) should be reviewed and rewritten.
+        1. **Multiple roots**. We need to re-check algorithm for graph containing multiple root nodes. We could have either several not-connected sub-graphs (a result of filtering, for example), or sub-graphs that have some intermediate connections between them. Probably, an energy-based logic would be more useful here. Nevertheless, we _may have_ to modify an existing `energy` function in a way that only the shortest edge is considered.
+        2. **Performance**. There's still a room for improvement. It's not cool to have things like `new_opts = {... for goal_id, opts in step.rr.node_opts.items()`. We visit literally all nodes in `rr` while update only some of them. This place (and, probably, several others) should be reviewed and rewritten.
         """
     )
     return
